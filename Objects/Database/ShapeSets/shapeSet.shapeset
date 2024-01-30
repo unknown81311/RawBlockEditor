@@ -1,0 +1,38 @@
+{
+   "partList" : [
+      {
+         "box" : {
+            "x" : 1,
+            "y" : 1,
+            "z" : 1
+         },
+         "name" : "DELETE ME",
+         "physicsMaterial" : "Default",
+         "renderable" : {
+            "lodList" : [
+               {
+                  "mesh" : "$GAME_DATA/Objects/Mesh/interactive/obj_interactive_logicgate_lod1.fbx",
+                  "subMeshList" : [
+                     {
+                        "material" : "DifAsgNorAlphaFlip",
+                        "textureList" : [
+                           "$GAME_DATA/Textures/transparent.tga",
+                           "$GAME_DATA/Textures/black.png",
+                           "$GAME_DATA/Textures/nonor_nor.tga"
+                        ]
+                     }
+                  ]
+               }
+            ]
+         },
+         "rotationSet" : "Default",
+         "scripted" : {
+            "classname" : "delme",
+            "filename" : "$CONTENT_DATA/Scripts/delme.lua"
+         },
+         "showInInventory" : false,
+         "uuid" : "10a0792f-cb10-44b2-b26c-72cb8a1d5a42"
+      }
+   ]
+}
+

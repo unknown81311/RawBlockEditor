@@ -1,0 +1,21 @@
+{
+	"lodList": [{
+		"mesh": "$CONTENT_DATA/Animations/Char_Tools/Char_connecttool/Animations/ani_char_connecttool_position.dae",
+		"includes" : ["POSITION", "UV0", "NORMAL", "TANGENTS", "BLEND_INDICES", "BLEND_WEIGHTS"],
+		"animationList" : [
+
+			// Command
+
+
+			//{ "name" : "connecttool_idle_flip",		"file" : "$CONTENT_DATA/Animations/Char_Tools/Char_connecttool/Animations/ani_char_connecttool_fp_idle_flip.dae" },
+
+			{ "name" : "connecttool_use_connect", 		"file" : "$CONTENT_DATA/Animations/Char_Tools/Char_connecttool/Animations/ani_char_connecttool_use_connect.dae" },
+			{ "name" : "connecttool_use_idle", 			"file" : "$CONTENT_DATA/Animations/Char_Tools/Char_connecttool/Animations/ani_char_connecttool_use_idle.dae" },
+			{ "name" : "connecttool_use_disconnect", 	"file" : "$CONTENT_DATA/Animations/Char_Tools/Char_connecttool/Animations/ani_char_connecttool_use_disconnect.dae" }
+
+
+		],
+		
+		"maxViewDistance": 1000.0
+	}]
+}
