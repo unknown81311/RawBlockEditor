@@ -46,8 +46,9 @@ local PlasticBLK = sm.uuid.new("628b2d61-5ceb-43e9-8334-a4135566df7a")
 local jointType = "joint"
 local bodyType = "body"
 
-local selectText = "<p textShadow='true' bg='gui_keybinds_bg' color='#ffffff' spacing='15'>" .. sm.gui.getKeyBinding( "Create", true ) .. "To edit</p>"
-local repeateText = "<p textShadow='true' bg='gui_keybinds_bg' color='#ffffff' spacing='15'>" .. sm.gui.getKeyBinding( "ForceBuild", true ) .. "To repeat last change</p>"
+local selectText = "<p textShadow='true' bg='gui_keybinds_bg' color='#ffffff' spacing='5'>" .. sm.gui.getKeyBinding( "Create", true ) .. "To edit selected</p>"
+local multiSelectText = "<p textShadow='true' bg='gui_keybinds_bg' color='#ffffff' spacing='5'> Hold" .. sm.gui.getKeyBinding( "Create", true ) .. "To multiselect</p>"
+local repeateText = "<p textShadow='true' bg='gui_keybinds_bg' color='#ffffff' spacing='5'>" .. sm.gui.getKeyBinding( "ForceBuild", true ) .. "To execute last change</p>"
 
 local A = stringTextC .. '"'
 local B = '"' .. defaultC .. ': ' .. stringTextC .. '"'
@@ -143,7 +144,7 @@ end
 
 local function raycast()
 	local camP = sm.camera.getPosition()
-	return sm.physics.raycast(camP, camP + sm.camera.getDirection() * 7.5, sm.localPlayer.getPlayer().character, 4099)
+	return sm.physics.raycast(camP, camP + sm.camera.getDirection() * 7.5, localPlayer.getPlayer().character, 4099)
 end
 
 function getShapeIndex( shape, body )
@@ -420,7 +421,8 @@ function blockEditor.server_onCreate( self )
 	self.sv = {
 		splitStrings = {},
 		lastJsons = {},
-		liftLevels = {}
+		liftLevels = {},
+		queue = {}
 	}
 end
 
@@ -451,7 +453,7 @@ function blockEditor.client_onCreate( self )
 		colorType = 0,
 		sldierType = 1,
 		toolColorValue = sm.color.new(0),
-		lastEditTime = 0,
+		editAllowed = true,
 		countEditTimes = 1
 	}
 
@@ -830,7 +832,7 @@ function blockEditor.client_onEquippedUpdate( self, primaryState, secondaryState
 	if not isValid then return false, false end
 
 	local bodyA = isBody and self.cl.raycast.resultShape.body or self.cl.raycast.resultShape.shapeA.body
-	sm.gui.setInteractionText(selectText)
+	sm.gui.setInteractionText(selectText, multiSelectText)
 	if self.cl.lastChanged and self.cl.lastActionType~=0 then
 		sm.gui.setInteractionText(repeateText)
 	end
@@ -946,7 +948,7 @@ function blockEditor.client_onEquippedUpdate( self, primaryState, secondaryState
 		self.cl.gui:setText("TextBox","")
 		self.network:sendToServer("sv_getJson", {shapes = self.cl.exportData.shapes, joints = self.cl.exportData.joints})
 	end
-	local lift = sm.localPlayer.getOwnedLift()
+	local lift = localPlayer.getOwnedLift()
 	if lift and lift.level ~= liftLevel then
 		liftLevel = lift.level
 		self.network:sendToServer("sv_setTrueLiftLevel", liftLevel)
@@ -955,13 +957,12 @@ function blockEditor.client_onEquippedUpdate( self, primaryState, secondaryState
 	if forceBuild ~= oldForceBuild then
 		oldForceBuild = forceBuild
 		if forceBuild and self.cl.lastActionType~=0 then
-			if self.cl.lastActionType==2 and (self.cl.lastEditTime + 7 <= sm.game.getCurrentTick()) then
+			if self.cl.lastActionType==2 and self.cl.editAllowed then
 				self.cl.countEditTimes = 1
 
 				if #self.cl.exportData.list == 0 then
 					local raycast, isShape = getRaycastItem()
 					if not raycast then return false, false end
-					print(raycast, isShape)
 					if self.cl.lastActionType == 2 then
 						self.network:sendToServer("sv_changeJson",{shapes = {isShape and raycast}, joints = {(not isShape) and raycast or nil}, list = {raycast}, id = self.cl.lastChanged})
 					else
@@ -974,19 +975,22 @@ function blockEditor.client_onEquippedUpdate( self, primaryState, secondaryState
 						self.network:sendToServer("sv_moveItems",{multiple = self.cl.countEditTimes, list = self.cl.exportData.list, dir = self.cl.lastMoveType})
 					end
 				end
+				self.cl.editAllowed = false
 			else
 				self.cl.countEditTimes = self.cl.countEditTimes + 1
 			end
 		end
-	elseif self.cl.countEditTimes > 1 and (self.cl.lastEditTime + 7 <= sm.game.getCurrentTick()) then
+	elseif self.cl.countEditTimes > 1 and self.cl.editAllowed then
 		if self.cl.lastActionType ~= 2 then
 			if #self.cl.exportData.list == 0 then
-					local raycast, isShape = getRaycastItem()
-					if not raycast then return false, false end
-					self.network:sendToServer("sv_moveItems",{multiple = self.cl.countEditTimes, list = {raycast}, dir = self.cl.lastMoveType})
-				else
-					self.network:sendToServer("sv_moveItems",{multiple = self.cl.countEditTimes, list = self.cl.exportData.list, dir = self.cl.lastMoveType})
-				end
+				local raycast, isShape = getRaycastItem()
+				if not raycast then return false, false end
+				self.network:sendToServer("sv_moveItems",{multiple = self.cl.countEditTimes, list = {raycast}, dir = self.cl.lastMoveType})
+			else
+				self.network:sendToServer("sv_moveItems",{multiple = self.cl.countEditTimes, list = self.cl.exportData.list, dir = self.cl.lastMoveType})
+			end
+				
+			self.cl.editAllowed = false
 			self.cl.countEditTimes = 1
 		end
 	end
@@ -1246,7 +1250,7 @@ function blockEditor.sv_moveItems( self, data, caller )
 
 		local newCreation = sm.creation.importFromString( sm.world.getCurrentWorld(), sm.json.writeJsonString(creation), nil, nil, true, true )
 
-		self.network:sendToClient(caller, "cl_setLastEditTime")
+		self.sv.queue.bodies = newCreation
 		
 		if newCreation ~= nil then
 
@@ -1262,7 +1266,7 @@ function blockEditor.sv_moveItems( self, data, caller )
 			end
 
 			if lifted then
-				local liftData = __lifts[caller.id]
+				local liftData = _G.__lifts[caller.id]
 				sm.player.placeLift( caller, newCreation, liftData.position, liftData.level, liftData.rotation )
 			end
 
@@ -1356,7 +1360,7 @@ end
 function blockEditor.sv_changeJson( self, data, caller )
 	local list = data.list
 	local diff = self.sv.lastJsons[caller.id][data.id]
-	print("diff",diff)
+
 	self:sv_setJson(data,caller,diff)
 end
 
@@ -1367,7 +1371,6 @@ function blockEditor.sv_setJson( self, data, caller, diff )
 	end
 	local json
 	if not diff then
-		print(self.sv.splitStrings[caller.id])
 		json = sm.json.parseJsonString(self.sv.splitStrings[caller.id])
 	end
 	local list = data.list
@@ -1422,8 +1425,6 @@ function blockEditor.sv_setJson( self, data, caller, diff )
 			self.sv.lastJsons[caller.id] = {[data.id] = findDifferences(self.sv.lastJsons[caller.id][data.id],sm.json.parseJsonString(self.sv.splitStrings[caller.id]))[1]}
 		end
 	end
-
-	print(self.sv.lastJsons[caller.id][data.id])
 
 	if diff then
 		for i,item in ipairs(list) do
@@ -1544,7 +1545,7 @@ function blockEditor.sv_setJson( self, data, caller, diff )
 
 		newCreation = sm.creation.importFromString( sm.world.getCurrentWorld(), sm.json.writeJsonString(creation), nil, nil, true, true )
 
-		self.network:sendToClient(caller, "cl_setLastEditTime")
+		self.sv.queue.bodies = newCreation
 		
 		if newCreation ~= nil then
 			local allShapes = newCreation[1]:getCreationShapes()
@@ -1559,7 +1560,7 @@ function blockEditor.sv_setJson( self, data, caller, diff )
 			end
 			
 			if lifted then
-				local liftData = __lifts[caller.id]
+				local liftData = _G.__lifts[caller.id]
 				sm.player.placeLift( caller, newCreation, liftData.position, liftData.level, liftData.rotation )
 			end
 
@@ -1609,11 +1610,14 @@ function blockEditor.sv_setJson( self, data, caller, diff )
 				end
 			end
 
-			self.sv.queue = sm.game.getCurrentTick()
-			self.sv.newShapes = newShapes
-			self.sv.newJoints = newJoints
-			self.sv.newList = newList
-			self.sv.caller = caller
+			self.sv.queue = {
+				bodies = newCreation,
+				newShapes = newShapes,
+				newJoints = newJoints,
+				newList = newList,
+				caller = caller,
+				regrab = true
+			}
 
 		end
 	end)
@@ -1652,17 +1656,43 @@ function blockEditor.sv_setJson( self, data, caller, diff )
 end
 
 function blockEditor.server_onFixedUpdate( self, dt )
-	if self.sv.queue then
-		if self.sv.queue + 7 <= sm.game.getCurrentTick() then
-			self:sv_getJson({shapes=self.sv.newShapes,joints=self.sv.newJoints,list=self.sv.newList},self.sv.caller,true)
-			self.sv.queue = nil
+	local bodies = self.sv.queue.bodies
+
+	if bodies then
+		local changed = false
+		local tick = sm.game.getCurrentTick()
+
+		local data = 0
+		for i, body in pairs(bodies) do
+			data = data + #body:getInteractables()
+		end
+		
+		for i, body in pairs(bodies) do
+			if body:hasChanged(tick - math.max(data / 100, 7)) then
+				changed = true
+				break
+			end
+		end
+
+		if not changed then
+			if self.sv.queue.regrab then
+				self:sv_getJson(
+					{
+						shapes = self.sv.queue.newShapes, 
+						joints = self.sv.queue.newJoints,
+						list = self.sv.queue.newList
+					},
+					self.sv.queue.caller,
+					true
+				)
+			end
+
+			self.cl.editAllowed = true
+			self.sv.queue = {}
 		end
 	end
 end
 
-function blockEditor.cl_setLastEditTime( self )
-	self.cl.lastEditTime = sm.game.getCurrentTick()
-end
 
 function blockEditor.cl_error( self, error )
 	setTpAnimation( self.cl.fpAnimations, "idleUse", 0.1 )
@@ -1716,7 +1746,7 @@ function blockEditor:sv_getOffsetPosition( oldBody, caller )
 
 	local center = (bb/2)+oldMin
 
-	local dist = center - __lifts[caller.id].position/4 - sm.vec3.new(0,0,0.625)
+	local dist = center - _G.__lifts[caller.id].position/4 - sm.vec3.new(0,0,0.625)
 
 	for i,x in pairs({"x","y","z"}) do 
 	    if dist[x] < 0 and bb[x] >= 0 then
@@ -1724,7 +1754,7 @@ function blockEditor:sv_getOffsetPosition( oldBody, caller )
 	    end
 	end
 
-	local newPos = __lifts[caller.id].position/4 - (bb/2 + dist)
+	local newPos = _G.__lifts[caller.id].position/4 - (bb/2 + dist)
 	newPos.z = 0
 
 	local offset =  ((newPos-oldBody:transformPoint( sm.vec3.zero() ))*4)
@@ -1750,7 +1780,6 @@ function blockEditor:sv_getOffsetPosition( oldBody, caller )
 		}
     }
 end
-
 
 function blockEditor.cl_animate( self, dt )
 	local isSprinting =  self.tool:isSprinting()
@@ -1795,7 +1824,7 @@ end
 function blockEditor.client_onUpdate( self, dt )
 	self:cl_animate(dt)
 
-	if self.tool:isEquipped() then -- can prob be optimised or smthn
+	if self.tool:isEquipped() and self.tool:isLocal() then
 		local hit, result = raycast()
 
 		self.cl.raycast.hit = hit
@@ -1822,10 +1851,11 @@ function blockEditor.client_onUpdate( self, dt )
 						self.cl.effect.visualization:stop() 
 					end
 				else
-					local pos, rot, scale, uuid = getEffectData(self.cl.effect.effectShape)
 					if self.cl.effect.visualization:isPlaying() then
-						self.cl.effect.visualization:stop() 
+						self.cl.effect.visualization:stop()
 					end
+
+					local pos, rot, scale, uuid = getEffectData(self.cl.effect.effectShape, dt)
 					self.cl.effect.visualization:setPosition(pos)
 					self.cl.effect.visualization:setRotation(rot)
 					self.cl.effect.visualization:setScale(scale)
@@ -1863,7 +1893,7 @@ function blockEditor.client_onUpdate( self, dt )
 						end
 					end
 
-					local pos, rot, scale, uuid = getEffectData(shape)
+					local pos, rot, scale, uuid = getEffectData(shape, dt)
 					local compare = self.cl.effect.compareTableShapes[i]
 					if compare.pos ~= pos then
 						effect:setPosition(pos)
@@ -1908,7 +1938,7 @@ function blockEditor.client_onUpdate( self, dt )
 						if effect:isPlaying() then effect:stop() end
 					end
 
-					local pos, rot, scale, uuid = getEffectData(joint)
+					local pos, rot, scale, uuid = getEffectData(joint, dt)
 					local compare = self.cl.effect.compareTableJoints[i]
 					if compare.pos ~= pos then
 						effect:setPosition(pos)
@@ -1932,7 +1962,8 @@ function blockEditor.client_onUpdate( self, dt )
 				end
 			end
 		end
-		if #self.cl.exportData.list>0 then
+
+		if #self.cl.exportData.list > 0 then
 			for i,effect in ipairs(self.cl.textEffects) do
 				if sm.exists(effect) then
 					local shape = self.cl.exportData.list[i]
@@ -1959,75 +1990,67 @@ function blockEditor.client_onUpdate( self, dt )
 end
 
 local __extraBuffer = sm.vec3.one()*0.01
-function getEffectData(item)
-	local isShape = type(item) == "Shape"
-	local effectPos
+
+function getEffectData(object, dt)
+	local isShape = type(object) == "Shape"
 	local effectScale = sm.vec3.one() / 4
-	local jointType
-	local uuid = item.uuid
+	local uuid = object.uuid
 
-	local lifted 
-	if isShape then
-		lifted = item.body:isOnLift()
-	else
-		lifted = item.shapeA.body:isOnLift()
-	end
+	local lifted = isShape and object.body:isOnLift() or not isShape and object.shapeA.body:isOnLift()
 
-	local itemWorldPosition = item:getWorldPosition()
-	local bb = item:getBoundingBox()
+	local objWorldPosition = object.worldPosition
+    local objWorldRotation = object:getWorldRotation()
+	local bb = object:getBoundingBox()
+
+    local effectPos
+    local jointType
 
 	if isShape then
-		effectScale = item.isBlock and bb + __extraBuffer or effectScale
+		effectScale = object.isBlock and bb + __extraBuffer or effectScale
 		
-		if item.isBlock then
-			uuid = PlasticBLK
-		end
+		if object.isBlock then uuid = PlasticBLK end
 
-		effectPos = item:getInterpolatedWorldPosition()
+	    effectPos = object:getInterpolatedWorldPosition() + object.velocity * dt
 	else
-		effectPos = itemWorldPosition
-		jointType = item:getType()
+		effectPos = objWorldPosition
+		jointType = object:getType()
 
 		local isPiston = jointType == "piston"
-		local pistonLength 
-		if isPiston then 
-			pistonLength = item:getLength()
-		end
+		local pistonLength = isPiston and object:getLength()
 		
-		local rot = sm.quat.getAt(item:getWorldRotation())
+		local rot = sm.quat.getAt(objWorldRotation)
+
 		if jointType == "unknown" then
-			local len = math.max(math.abs(bb.x), math.abs(bb.y), math.abs(bb.z))
+			local len = math.max(math.abs(bb.x),  math.abs(bb.y), math.abs(bb.z))
 			local offset = len / 2 - 0.125
 
-			effectPos = itemWorldPosition + rot * offset
+			effectPos = objWorldPosition + rot * offset
 		elseif isPiston and pistonLength > 1.05 and not lifted then
 			uuid = PlasticBLK
 
 			effectScale = sm.vec3.new(0.25, 0.25, pistonLength / 4)
 			
-			local real = item.worldPosition
-			local fake = real + rot * pistonLength / 4
-			local dir = fake - real
+			local fake = objWorldPosition + rot * pistonLength / 4
+			local dir = fake - objWorldPosition
 
-			effectPos = itemWorldPosition + dir / 2 - (rot * 0.125)
+			effectPos = objWorldPosition + dir / 2 - (rot * 0.125)
 		end
 	end
-	local absShape = isShape and item or item.shapeA
-	local velocity = absShape.velocity
-	effectPos = effectPos + velocity * 0.007
 
-	local rot
 	if isShape then
-		local at = (absShape:getInterpolatedAt() + absShape.body.angularVelocity:rotate(-math.rad(90), absShape:getInterpolatedAt()) * 0.008):normalize()
-		local right = (absShape:getInterpolatedRight() + absShape.body.angularVelocity:rotate(-math.rad(90), absShape:getInterpolatedRight()) * 0.008):normalize()
-		local up = (absShape:getInterpolatedUp() + absShape.body.angularVelocity:rotate(-math.rad(90), absShape:getInterpolatedUp()) * 0.008):normalize()
+		local interpAt = object:getInterpolatedAt()
+		local interpRight = object:getInterpolatedRight()
+		local interpUp = object:getInterpolatedUp()
+		local angularVelocity = object.body.angularVelocity
+
+		local at = (interpAt + angularVelocity:rotate(-math.rad(90), interpAt) * dt):normalize()
+		local right = (interpRight + angularVelocity:rotate(-math.rad(90), interpRight) * dt):normalize()
+		local up = (interpUp + angularVelocity:rotate(-math.rad(90), interpUp) * dt):normalize()
 		
-		rot = better_quat_rotation(at, right, up)
-	else
-		rot = item:getWorldRotation()
+		objWorldRotation = better_quat_rotation(at, right, up)
 	end
 
-	return effectPos, rot, effectScale, uuid
+	return effectPos, objWorldRotation, effectScale, uuid
 end
 
 function destroyEffectTable(effects)
