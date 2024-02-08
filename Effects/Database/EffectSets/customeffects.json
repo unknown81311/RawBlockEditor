@@ -1,0 +1,23 @@
+{
+	"RawBlockEditor_ShapeRenderable":
+	{
+		"parameterList":
+		{
+			"uuid": "null",
+			"color": 0
+		},
+		"effectList":
+		[
+			{
+				"type": "shapeRenderable",
+				"name": "",
+				"parameters":
+				[
+					"uuid",
+					"color",
+					"visualization"	
+				]
+			}			
+		]
+	}
+}

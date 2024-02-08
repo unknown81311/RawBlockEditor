@@ -439,7 +439,7 @@ function blockEditor.client_onCreate( self )
 			list = {}
 		},
 		effect = {
-			visualization = sm.effect.createEffect("ShapeRenderable"),
+			visualization = sm.effect.createEffect("RawBlockEditor_ShapeRenderable"),
 			effectTableShapes = {},
 			effectTableJoints = {},
 			compareTableShapes = {},
@@ -1877,7 +1877,7 @@ function blockEditor.client_onUpdate( self, dt )
 				if sm.exists(shape) then
 					local effect = self.cl.effect.effectTableShapes[i]
 					if not effect then
-						effect = sm.effect.createEffect("ShapeRenderable")
+						effect = sm.effect.createEffect("RawBlockEditor_ShapeRenderable")
 						effect:setParameter("visualization", true)
 
 						self.cl.effect.compareTableShapes[i] = {
@@ -1924,7 +1924,7 @@ function blockEditor.client_onUpdate( self, dt )
 					local effect = self.cl.effect.effectTableJoints[i]
 
 					if not effect then
-						effect = sm.effect.createEffect("ShapeRenderable")
+						effect = sm.effect.createEffect("RawBlockEditor_ShapeRenderable")
 						effect:setParameter("visualization", true)
 
 						self.cl.effect.compareTableJoints[i] = {
