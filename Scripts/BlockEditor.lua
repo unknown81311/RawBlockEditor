@@ -422,7 +422,8 @@ function blockEditor.server_onCreate( self )
 		splitStrings = {},
 		lastJsons = {},
 		liftLevels = {},
-		queue = {}
+		queue = {},
+		flyer = {}
 	}
 end
 
@@ -813,6 +814,8 @@ end
 
 function blockEditor.client_onDestroy( self )
 	self:cl_onClose()
+
+	sm.localPlayer.getPlayer().character.movementSpeedFraction = 20
 end
 
 local liftLevel = 0
@@ -831,7 +834,7 @@ function blockEditor.client_onEquippedUpdate( self, primaryState, secondaryState
 	local isValid = isBody or result.type == "joint"
 	if not isValid then return false, false end
 
-	local bodyA = isBody and self.cl.raycast.resultShape.body or self.cl.raycast.resultShape.shapeA.body
+	local bodyA = isBody and self.cl.raycast.result:getBody() or self.cl.raycast.result:getJoint().shapeA.body
 	sm.gui.setInteractionText(selectText, multiSelectText)
 	if self.cl.lastChanged and self.cl.lastActionType~=0 then
 		sm.gui.setInteractionText(repeateText)
@@ -933,7 +936,7 @@ function blockEditor.client_onEquippedUpdate( self, primaryState, secondaryState
 			self.cl.compareBody = nil
 			self.cl.hasMode = 0  -- 0 for no mode
 		end
-	elseif primaryState == 3 then
+	elseif primaryState == 3 and not (secondaryState ~= 0) then
 		if self.cl.hasMode == 0 then
 			setTpAnimation( self.cl.fpAnimations, "rotateIn", 0.2 )
 			self.cl.hasMode = 3  -- 3 for "Single"
@@ -947,6 +950,8 @@ function blockEditor.client_onEquippedUpdate( self, primaryState, secondaryState
 		--self.cl.hasMode = 0  -- 0 for no mode
 		self.cl.gui:setText("TextBox","")
 		self.network:sendToServer("sv_getJson", {shapes = self.cl.exportData.shapes, joints = self.cl.exportData.joints})
+	elseif primaryState == 3 and not (secondaryState ~= 0) then
+		self:cl_onClose()
 	end
 	local lift = localPlayer.getOwnedLift()
 	if lift and lift.level ~= liftLevel then
@@ -1266,8 +1271,8 @@ function blockEditor.sv_moveItems( self, data, caller )
 			end
 
 			if lifted then
-				local liftData = _G.__lifts[caller.id]
-				sm.player.placeLift( caller, newCreation, liftData.position, liftData.level, liftData.rotation )
+				local liftData = self.__lifts[caller.id]
+				sm.player.placeLift( caller, newCreation, liftData.liftPos, liftData.liftLevel, liftData.rotationIndex )
 			end
 
 			for i,shape in pairs(anyBody:getCreationShapes()) do
@@ -1560,8 +1565,8 @@ function blockEditor.sv_setJson( self, data, caller, diff )
 			end
 			
 			if lifted then
-				local liftData = _G.__lifts[caller.id]
-				sm.player.placeLift( caller, newCreation, liftData.position, liftData.level, liftData.rotation )
+				local liftData = self.__lifts[caller.id]
+				sm.player.placeLift( caller, newCreation, liftData.liftPos, liftData.liftLevel, liftData.rotationIndex )
 			end
 
 			for i,shape in pairs(anyBody:getCreationShapes()) do
@@ -1655,7 +1660,36 @@ function blockEditor.sv_setJson( self, data, caller, diff )
 	end
 end
 
+function blockEditor.sv_getLift( self )
+	if self.Lift then return end
+	self.Lift = sm.__hook.Lift.server_placeLift
+	self.__lifts = {}
+
+	-- some dangerious shit
+	function sm.__hook.Lift.server_placeLift( _self, placeLiftParams )
+		self.__lifts[placeLiftParams.player.id] = placeLiftParams
+
+		self.Lift(_self, placeLiftParams)
+	end
+end
+
+function blockEditor.sv_fly( self )
+	local player = self.tool:getOwner()
+
+	if self.sv.flyer[player.id] then
+		if player.character:isSprinting() then
+			player.character.movementSpeedFraction = 20.0
+		else
+			player.character.movementSpeedFraction = 3.5
+		end
+		player.character.publicData.waterMovementSpeedFraction = player.character.movementSpeedFraction
+	end
+end
+
 function blockEditor.server_onFixedUpdate( self, dt )
+	self:sv_getLift()
+	self:sv_fly()
+
 	local bodies = self.sv.queue.bodies
 
 	if bodies then
@@ -1664,13 +1698,17 @@ function blockEditor.server_onFixedUpdate( self, dt )
 
 		local data = 0
 		for i, body in pairs(bodies) do
-			data = data + #body:getInteractables()
+			if sm.exists(body) then
+				data = data + #body:getInteractables()
+			end
 		end
 		
 		for i, body in pairs(bodies) do
-			if body:hasChanged(tick - math.max(data / 100, 7)) then
-				changed = true
-				break
+			if sm.exists(body) then
+				if body:hasChanged(tick - math.max(data / 100, 7)) then
+					changed = true
+					break
+				end
 			end
 		end
 
@@ -1746,7 +1784,9 @@ function blockEditor:sv_getOffsetPosition( oldBody, caller )
 
 	local center = (bb/2)+oldMin
 
-	local dist = center - _G.__lifts[caller.id].position/4 - sm.vec3.new(0,0,0.625)
+	print(self.__lifts)
+
+	local dist = center - self.__lifts[caller.id].liftPos/4 - sm.vec3.new(0,0,0.625)
 
 	for i,x in pairs({"x","y","z"}) do 
 	    if dist[x] < 0 and bb[x] >= 0 then
@@ -1754,7 +1794,7 @@ function blockEditor:sv_getOffsetPosition( oldBody, caller )
 	    end
 	end
 
-	local newPos = _G.__lifts[caller.id].position/4 - (bb/2 + dist)
+	local newPos = self.__lifts[caller.id].liftPos/4 - (bb/2 + dist)
 	newPos.z = 0
 
 	local offset =  ((newPos-oldBody:transformPoint( sm.vec3.zero() ))*4)
@@ -2059,7 +2099,19 @@ function destroyEffectTable(effects)
 	end
 end
 
+function blockEditor.sv_toggleFlyMode( self, state, player )
+	self.sv.flyer[player.id] = state
+	player.character:setSwimming(state)
+	if not state then
+		player.character.movementSpeedFraction = 1
+		player.character.publicData.waterMovementSpeedFraction = 1
+	end
+end
+
+local flyState = false
 function blockEditor.client_onToggle( self )
+	flyState = not flyState
+	self.network:sendToServer( "sv_toggleFlyMode", flyState )
 	return false
 end
 

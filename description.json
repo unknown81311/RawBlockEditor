@@ -6,5 +6,11 @@
    "localId" : "12860515-9fe7-4cfb-a34c-9254e54c5664",
    "name" : "Raw Block Editor",
    "type" : "Blocks and Parts",
-   "version" : 1
+   "version" : 1,
+   "dependencies" : [
+      {
+         "fileId" : 3106598997,
+         "localId" : "a2425879-2256-4b93-b0b8-f4f78b0ee144"
+      }
+   ]
 }

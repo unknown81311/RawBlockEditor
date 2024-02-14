@@ -10,19 +10,6 @@
             "file" : "$CONTENT_DATA/Scripts/BlockEditor.lua"
          },
          "uuid" : "ffa60db1-728d-41a2-8c50-f9043f090ad6"
-      },
-      {
-         "autoTool" : true,
-         "name" : "liftHook",
-         "previewRenderable" : "$GAME_DATA/Character/Char_Tools/char_connecttool_preview.rend",
-         "previewRotation" : [ 1, 0, 0, 0, 0, -1, 0, 1, 0 ],
-         "script" : {
-            "class" : "liftHook",
-            "data" : {},
-            "file" : "$CONTENT_DATA/Scripts/liftHook.lua"
-         },
-         "showInInventory" : true,
-         "uuid" : "7fb89c1d-5e09-43f1-a52d-44b10e9c0957"
       }
    ]
 }
