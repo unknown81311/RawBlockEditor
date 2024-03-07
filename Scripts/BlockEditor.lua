@@ -1271,7 +1271,7 @@ function blockEditor.sv_moveItems( self, data, caller )
 			end
 
 			if lifted then
-				local liftData = self.__lifts[caller.id]
+				local liftData = liftDataTbl[caller.id]
 				sm.player.placeLift( caller, newCreation, liftData.liftPos, liftData.liftLevel, liftData.rotationIndex )
 			end
 
@@ -1565,7 +1565,7 @@ function blockEditor.sv_setJson( self, data, caller, diff )
 			end
 			
 			if lifted then
-				local liftData = self.__lifts[caller.id]
+				local liftData = liftDataTbl[caller.id]
 				sm.player.placeLift( caller, newCreation, liftData.liftPos, liftData.liftLevel, liftData.rotationIndex )
 			end
 
@@ -1660,19 +1660,6 @@ function blockEditor.sv_setJson( self, data, caller, diff )
 	end
 end
 
-function blockEditor.sv_getLift( self )
-	if self.Lift then return end
-	self.Lift = sm.__hook.Lift.server_placeLift
-	self.__lifts = {}
-
-	-- some dangerious shit
-	function sm.__hook.Lift.server_placeLift( _self, placeLiftParams )
-		self.__lifts[placeLiftParams.player.id] = placeLiftParams
-
-		self.Lift(_self, placeLiftParams)
-	end
-end
-
 function blockEditor.sv_fly( self )
 	local player = self.tool:getOwner()
 
@@ -1687,7 +1674,6 @@ function blockEditor.sv_fly( self )
 end
 
 function blockEditor.server_onFixedUpdate( self, dt )
-	self:sv_getLift()
 	self:sv_fly()
 
 	local bodies = self.sv.queue.bodies
@@ -1784,9 +1770,7 @@ function blockEditor:sv_getOffsetPosition( oldBody, caller )
 
 	local center = (bb/2)+oldMin
 
-	print(self.__lifts)
-
-	local dist = center - self.__lifts[caller.id].liftPos/4 - sm.vec3.new(0,0,0.625)
+	local dist = center - liftDataTbl[caller.id].liftPos/4 - sm.vec3.new(0,0,0.625)
 
 	for i,x in pairs({"x","y","z"}) do 
 	    if dist[x] < 0 and bb[x] >= 0 then
@@ -1794,7 +1778,7 @@ function blockEditor:sv_getOffsetPosition( oldBody, caller )
 	    end
 	end
 
-	local newPos = self.__lifts[caller.id].liftPos/4 - (bb/2 + dist)
+	local newPos = liftDataTbl[caller.id].liftPos/4 - (bb/2 + dist)
 	newPos.z = 0
 
 	local offset =  ((newPos-oldBody:transformPoint( sm.vec3.zero() ))*4)
@@ -2333,3 +2317,19 @@ function better_quat_rotation(forward, right, up)
 
     return sm.quat.new((m23 - m32) * mult, (m31 - m13) * mult, (m12 - m21) * mult, biggestVal)
 end
+
+local old = sm.player.placeLift
+
+function liftHk(player, selectedBodies, liftPos, liftLvl, rotInd)
+	if not liftDataTbl then liftDataTbl = {} end
+	liftDataTbl[player.id] = {
+		player = player,
+		selectedBodies = selectedBodies,
+		liftPos = liftPos,
+		liftLevel = liftLvl,
+		rotationIndex = rotInd
+	}
+	old(player, selectedBodies, liftPos, liftLvl, rotInd)
+end
+
+sm.player.placeLift = liftHk
