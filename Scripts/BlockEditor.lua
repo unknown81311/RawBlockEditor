@@ -1271,7 +1271,7 @@ function blockEditor.sv_moveItems( self, data, caller )
 			end
 
 			if lifted then
-				local liftData = liftDataTbl[caller.id]
+				local liftData = g_liftDataTbl[caller.id]
 				sm.player.placeLift( caller, newCreation, liftData.liftPos, liftData.liftLevel, liftData.rotationIndex )
 			end
 
@@ -1565,7 +1565,7 @@ function blockEditor.sv_setJson( self, data, caller, diff )
 			end
 			
 			if lifted then
-				local liftData = liftDataTbl[caller.id]
+				local liftData = g_liftDataTbl[caller.id]
 				sm.player.placeLift( caller, newCreation, liftData.liftPos, liftData.liftLevel, liftData.rotationIndex )
 			end
 
@@ -1770,7 +1770,7 @@ function blockEditor:sv_getOffsetPosition( oldBody, caller )
 
 	local center = (bb/2)+oldMin
 
-	local dist = center - liftDataTbl[caller.id].liftPos/4 - sm.vec3.new(0,0,0.625)
+	local dist = center - g_liftDataTbl[caller.id].liftPos/4 - sm.vec3.new(0,0,0.625)
 
 	for i,x in pairs({"x","y","z"}) do 
 	    if dist[x] < 0 and bb[x] >= 0 then
@@ -1778,7 +1778,7 @@ function blockEditor:sv_getOffsetPosition( oldBody, caller )
 	    end
 	end
 
-	local newPos = liftDataTbl[caller.id].liftPos/4 - (bb/2 + dist)
+	local newPos = g_liftDataTbl[caller.id].liftPos/4 - (bb/2 + dist)
 	newPos.z = 0
 
 	local offset =  ((newPos-oldBody:transformPoint( sm.vec3.zero() ))*4)
@@ -2321,8 +2321,8 @@ end
 local old = sm.player.placeLift
 
 function liftHk(player, selectedBodies, liftPos, liftLvl, rotInd)
-	if not liftDataTbl then liftDataTbl = {} end
-	liftDataTbl[player.id] = {
+	if not g_liftDataTbl then g_liftDataTbl = {} end
+	g_liftDataTbl[player.id] = {
 		player = player,
 		selectedBodies = selectedBodies,
 		liftPos = liftPos,
